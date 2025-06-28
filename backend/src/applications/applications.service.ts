@@ -6,6 +6,23 @@ export class ApplicationsService {
   constructor(private readonly db: DbService) {}
 
   map(row: any) {
+    let signature = '';
+    if (row.signature) {
+      // If the row.signature is a Buffer, convert to base64
+      // (row.signature might also be null, or already a string)
+      if (Buffer.isBuffer(row.signature)) {
+        const b64 = row.signature.toString('base64');
+        signature = `data:image/png;base64,${b64}`;
+      } else if (typeof row.signature === 'object' && Array.isArray(row.signature.data)) {
+        // Defensive: handle returned object from some drivers
+        const b64 = Buffer.from(row.signature.data).toString('base64');
+        signature = `data:image/png;base64,${b64}`;
+      } else if (typeof row.signature === 'string' && row.signature.startsWith('data:image/')) {
+        signature = row.signature;
+      } else {
+        signature = '';
+      }
+    }
     return {
       id: row.id,
       plantAddress: row.plant_address,
@@ -21,7 +38,7 @@ export class ApplicationsService {
       naCertificateAttached: row.na_certificate_attached,
       powerFlowMonitoringCertificateAttached: row.power_flow_monitoring_certificate_attached,
       overviewSystemDiagramAttached: row.overview_system_diagram_attached,
-      signature: row.signature,
+      signature,
       signaturePlace: row.signature_place,
       createdAt: row.created_at,
     };
@@ -46,6 +63,10 @@ export class ApplicationsService {
       powerFlowMonitoringCertificateAttached, overviewSystemDiagramAttached,
       signature, signaturePlace,
     } = data;
+
+    const signatureBase64Data = signature.replace(/^data:image\/\w+;base64,/, '');
+    const signatureBinaryData = Buffer.from(signatureBase64Data, 'base64');
+
     const result = await this.db.query(
       `INSERT INTO applications
        (plant_address, system_type, commisioning_date, subscriber, operator, system_installer,
@@ -61,7 +82,7 @@ export class ApplicationsService {
         applicationGridConnectionAttached, sitePlanAttached, generatingDataSheetAttached,
         unitCertificatesAvailable, naCertificateAttached,
         powerFlowMonitoringCertificateAttached, overviewSystemDiagramAttached,
-        signature, signaturePlace,
+        signatureBinaryData, signaturePlace,
       ],
     );
     return result.rows[0] ? this.map(result.rows[0]) : null;
